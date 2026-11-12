@@ -23,7 +23,13 @@ The bare tile closes 46.9 MHz, below the 50 MHz board clock, so a PLL runs it at
 | 4 STATUS | none | Reply: cycles `[31:16]`, jobs `[15:8]`, flags `[7:3]`, write error, finished, busy |
 | 5 DISPLAY | LEDs `[33:24]`, HEX `[23:0]` | Update board outputs |
 
+![Command and reply field layouts](img/jtag-fields.svg)
+
 Replies are `{B16A, sequence, data}`, and the host checks every tag. Word *n* carries the reply to word *n−2*. A job finishes within two word times at 24 MHz TCK, hence two NOPs after START.
+
+![One READ word from `tb/top_tb.sv`: TDI fields, the TDO reply to word n−2, and the tile-domain execute pulse](img/jtag-word.svg)
+
+![Reply lag in simulation, and the 7-TCK TDI skew measured on the board](img/jtag-protocol.svg)
 
 `quartus_stp` buffers stdout until it exits, so `vjtag_server.tcl` talks to Python over a loopback socket.
 

@@ -10,6 +10,8 @@ An eight-lane BF16 matrix tile with FP32 accumulation, taken unmodified from an 
 | Training | 193 jobs, loss 57.355 → 0.000780 |
 | Random jobs | 500 jobs, 256,000 FMAs bit-identical |
 
+![One 64-bit JTAG word in simulation: command bits in on TDI, a two-word-old reply out on TDO](docs/img/jtag-word.svg)
+
 ## Why it matters
 
 The same `training_tile_v4` RTL that is routed to a SKY130HD layout in the chip lab runs here on real silicon. Every result returned over JTAG is compared bit for bit with an exact FP32 reference, so the board run checks the ASIC design's arithmetic, not just its simulation.
