@@ -35,7 +35,9 @@ class HostModelTests(unittest.TestCase):
         self.assertEqual(0x3F810000, host.bf16(0x3F810000))
 
     def test_reference_matches_a_hand_product(self) -> None:
-        two_identity = [host.bits(2.0) if i % 9 == 0 else 0 for i in range(host.ELEMENTS)]
+        two_identity = [
+            host.bits(2.0) if i % 9 == 0 else 0 for i in range(host.ELEMENTS)
+        ]
         b = [host.bits(1 + i / 128) for i in range(host.ELEMENTS)]
         expected = [0x40000000 + (i << 16) for i in range(host.ELEMENTS)]
         self.assertEqual(expected, host.reference(two_identity, b))
@@ -46,24 +48,39 @@ class HostModelTests(unittest.TestCase):
 
     def test_word_layout_matches_rtl(self) -> None:
         source = (ROOT / "rtl" / "tile_host.sv").read_text(encoding="utf-8")
-        for name, opcode in (("WRITE", 1), ("READ", 2), ("START", 3), ("STATUS", 4), ("DISPLAY", 5)):
+        for name, opcode in (
+            ("WRITE", 1),
+            ("READ", 2),
+            ("START", 3),
+            ("STATUS", 4),
+            ("DISPLAY", 5),
+        ):
             with self.subTest(op=name):
                 self.assertTrue(re.search(rf"OP_{name} = 4'd{opcode};", source))
         self.assertIn("write_enable <= command[55:53]", source)
         self.assertIn("host_bank <= command[52]", source)
         self.assertIn("write_addr <= command[45:40]", source)
-        self.assertEqual(0b101 << 53 | 1 << 60 | 1 << 52 | 9 << 40 | 7, host.write_word(0b101, 1, 9, 7))
+        self.assertEqual(
+            0b101 << 53 | 1 << 60 | 1 << 52 | 9 << 40 | 7,
+            host.write_word(0b101, 1, 9, 7),
+        )
 
 
 class GateTests(unittest.TestCase):
     def test_timing_fails_any_negative_corner(self) -> None:
-        self.assertEqual(0.17, gate.worst_slack("; Worst-case Slack ; 2.67 ; 0.17 ; N/A ; 1.5 ;"))
-        self.assertEqual(-1.3, gate.worst_slack("; Worst-case Slack ; -1.3 ; 0.17 ; N/A ; 1.5 ;"))
+        self.assertEqual(
+            0.17, gate.worst_slack("; Worst-case Slack ; 2.67 ; 0.17 ; N/A ; 1.5 ;")
+        )
+        self.assertEqual(
+            -1.3, gate.worst_slack("; Worst-case Slack ; -1.3 ; 0.17 ; N/A ; 1.5 ;")
+        )
         self.assertIsNone(gate.worst_slack("no summary"))
 
     def test_pin_gate_rejects_wrong_location_or_voltage(self) -> None:
-        qsf = ('set_location_assignment PIN_V16 -to LEDR[0]\n'
-               'set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LEDR[0]\n')
+        qsf = (
+            "set_location_assignment PIN_V16 -to LEDR[0]\n"
+            'set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LEDR[0]\n'
+        )
         good = "LEDR[0]   : V16  : output : 3.3-V LVTTL   :    : 4A : Y\n"
         moved = "LEDR[0]   : B8   : output : 3.3-V LVTTL   :    : 4A : N\n"
         wrong_voltage = "LEDR[0]   : V16  : output : 2.5 V   :    : 4A : Y\n"

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Run training_tile_v4 on the DE1-SoC over USB JTAG and bit-check every result."""
+
 from __future__ import annotations
 
 import argparse
@@ -21,7 +22,9 @@ ELEMENTS = DIM * DIM
 WORD_BITS = 64
 REPLY_MAGIC = 0xB16A
 REPLY_LAG = 2  # Word n carries the reply to word n-2; see docs/design.md.
-TDI_SKEW_BITS = 7  # Measured on this board: TDI reaches the bridge 7 tck after its TDO framing.
+TDI_SKEW_BITS = (
+    7  # Measured on this board: TDI reaches the bridge 7 tck after its TDO framing.
+)
 MAX_WORDS_PER_SCAN = 4096
 TILE_MHZ = 40
 SERVER_TIMEOUT_S = 30
@@ -87,15 +90,23 @@ def fma(a: int, b: int, c: int) -> int:
     return 0x80000000 if both_negative else 0
 
 
-def reference(a: Matrix, b: Matrix, c: Matrix | None = None, transpose_a: bool = False,
-              transpose_b: bool = False, accumulate: bool = False) -> Matrix:
+def reference(
+    a: Matrix,
+    b: Matrix,
+    c: Matrix | None = None,
+    transpose_a: bool = False,
+    transpose_b: bool = False,
+    accumulate: bool = False,
+) -> Matrix:
     """Software model of one tile job; A and B must already be BF16 values."""
     out = list(c) if accumulate and c else [0] * ELEMENTS
     for inner in range(DIM):
         for row in range(DIM):
             left = a[inner * DIM + row] if transpose_a else a[row * DIM + inner]
             for column in range(DIM):
-                right = b[column * DIM + inner] if transpose_b else b[inner * DIM + column]
+                right = (
+                    b[column * DIM + inner] if transpose_b else b[inner * DIM + column]
+                )
                 out[row * DIM + column] = fma(left, right, out[row * DIM + column])
     return out
 
@@ -112,8 +123,16 @@ def read_word(bank: int, address: int) -> int:
     return 2 << 60 | bank << 52 | address << 40
 
 
-def start_word(job_bank: int, accumulate: bool, transpose_b: bool, transpose_a: bool) -> int:
-    return 3 << 60 | job_bank << 3 | int(accumulate) << 2 | int(transpose_b) << 1 | int(transpose_a)
+def start_word(
+    job_bank: int, accumulate: bool, transpose_b: bool, transpose_a: bool
+) -> int:
+    return (
+        3 << 60
+        | job_bank << 3
+        | int(accumulate) << 2
+        | int(transpose_b) << 1
+        | int(transpose_a)
+    )
 
 
 def display_word(digits: int, leds: int) -> int:
@@ -132,8 +151,15 @@ def pack_scan(words: list[int]) -> int:
     return packed >> TDI_SKEW_BITS
 
 
-def job_words(a: Matrix, b: Matrix, c: Matrix | None, transpose_a: bool, transpose_b: bool,
-              accumulate: bool, bank: int) -> list[int]:
+def job_words(
+    a: Matrix,
+    b: Matrix,
+    c: Matrix | None,
+    transpose_a: bool,
+    transpose_b: bool,
+    accumulate: bool,
+    bank: int,
+) -> list[int]:
     """Words that load, run and read back one job; replies 'status' then 64 C values."""
     words = []
     for enable, matrix in ((0b001, a), (0b010, b)):
@@ -158,8 +184,14 @@ class Status:
 
     @classmethod
     def decode(cls, data: int) -> "Status":
-        return cls(bool(data & 1), bool(data & 2), bool(data & 4), (data >> 3) & 0x1F,
-                   (data >> 8) & 0xFF, data >> 16)
+        return cls(
+            bool(data & 1),
+            bool(data & 2),
+            bool(data & 4),
+            (data >> 3) & 0x1F,
+            (data >> 8) & 0xFF,
+            data >> 16,
+        )
 
 
 class Link:
@@ -175,14 +207,19 @@ class Link:
             listener.settimeout(SERVER_TIMEOUT_S)
             port = listener.getsockname()[1]
             self.process = subprocess.Popen(
-                [tool, "-t", str(SERVER)], stdin=subprocess.DEVNULL, stdout=self.log,
-                stderr=subprocess.STDOUT, env={**os.environ, "BF16_HOST_PORT": str(port)},
+                [tool, "-t", str(SERVER)],
+                stdin=subprocess.DEVNULL,
+                stdout=self.log,
+                stderr=subprocess.STDOUT,
+                env={**os.environ, "BF16_HOST_PORT": str(port)},
             )
             try:
                 self.connection, _ = listener.accept()
             except TimeoutError:
                 self.process.kill()
-                raise RuntimeError("quartus_stp never connected:\n" + self._log_tail()) from None
+                raise RuntimeError(
+                    "quartus_stp never connected:\n" + self._log_tail()
+                ) from None
         self.stream = self.connection.makefile("rw", newline="\n")
         if self._read_line() != "READY":
             raise RuntimeError("quartus_stp did not report READY")
@@ -222,10 +259,12 @@ class Link:
             self.sequence = (replies[0] >> 32) & 0xFFFF
         self.sequence = (self.sequence + 1) & 0xFFFF  # The leading NOP.
         results = []
-        for offset, reply in enumerate(replies[1 + REPLY_LAG:]):
+        for offset, reply in enumerate(replies[1 + REPLY_LAG :]):
             expected = (self.sequence + 1 + offset) & 0xFFFF
             if reply >> 32 != (REPLY_MAGIC << 16 | expected):
-                raise RuntimeError(f"word {offset}: reply {reply:016x}, sequence {expected}")
+                raise RuntimeError(
+                    f"word {offset}: reply {reply:016x}, sequence {expected}"
+                )
             results.append(reply & 0xFFFFFFFF)
         # Executed words: the payload, then the two trailing NOPs.
         self.sequence = (self.sequence + len(words) + REPLY_LAG) & 0xFFFF
@@ -242,24 +281,39 @@ class Tile:
         self.flops = 0
         self.max_cycles = 0
 
-    def run(self, a: Matrix, b: Matrix, c: Matrix | None = None, transpose_a: bool = False,
-            transpose_b: bool = False, accumulate: bool = False) -> Matrix:
+    def run(
+        self,
+        a: Matrix,
+        b: Matrix,
+        c: Matrix | None = None,
+        transpose_a: bool = False,
+        transpose_b: bool = False,
+        accumulate: bool = False,
+    ) -> Matrix:
         words = job_words(a, b, c, transpose_a, transpose_b, accumulate, self.bank)
         replies = self.link.transact(words)
         status = Status.decode(replies[-ELEMENTS - 1])
         output = replies[-ELEMENTS:]
         if status.busy or not status.finished or status.write_error:
             raise RuntimeError(f"bad job status: {status}")
-        expected = reference([bf16(x) for x in a], [bf16(x) for x in b], c, transpose_a,
-                             transpose_b, accumulate)
+        expected = reference(
+            [bf16(x) for x in a],
+            [bf16(x) for x in b],
+            c,
+            transpose_a,
+            transpose_b,
+            accumulate,
+        )
         mismatches = [i for i in range(ELEMENTS) if output[i] != expected[i]]
         if mismatches:
             first = mismatches[0]
-            raise RuntimeError(f"{len(mismatches)} wrong elements; C[{first}]="
-                               f"{output[first]:08x}, expected {expected[first]:08x}")
+            raise RuntimeError(
+                f"{len(mismatches)} wrong elements; C[{first}]="
+                f"{output[first]:08x}, expected {expected[first]:08x}"
+            )
         self.bank ^= 1
         self.jobs += 1
-        self.flops += 2 * DIM ** 3
+        self.flops += 2 * DIM**3
         self.max_cycles = max(self.max_cycles, status.cycles)
         return output
 
@@ -269,8 +323,11 @@ class Tile:
 
 def random_operand(rng: random.Random) -> int:
     """A finite value spanning subnormals to large exponents, with random sign."""
-    return rng.getrandbits(32) & 0x8F7FFFFF | rng.randrange(96, 160) << 23 if rng.random() < .9 \
+    return (
+        rng.getrandbits(32) & 0x8F7FFFFF | rng.randrange(96, 160) << 23
+        if rng.random() < 0.9
         else rng.getrandbits(1) << 31 | rng.getrandbits(23)
+    )
 
 
 def command_selftest(tile: Tile, args: argparse.Namespace) -> None:
@@ -281,9 +338,11 @@ def command_selftest(tile: Tile, args: argparse.Namespace) -> None:
         accumulate = job % 2 == 1
         c = [random_operand(rng) for _ in range(ELEMENTS)] if accumulate else None
         tile.run(a, b, c, bool(job & 2), bool(job & 4), accumulate)
-    print(f"selftest: {tile.jobs} jobs, {tile.jobs * ELEMENTS} FP32 results, "
-          f"{tile.flops // 2} FMAs bit-identical to the reference; "
-          f"job length {tile.max_cycles} clocks")
+    print(
+        f"selftest: {tile.jobs} jobs, {tile.jobs * ELEMENTS} FP32 results, "
+        f"{tile.flops // 2} FMAs bit-identical to the reference; "
+        f"job length {tile.max_cycles} clocks"
+    )
 
 
 def command_train(tile: Tile, args: argparse.Namespace) -> None:
@@ -293,7 +352,9 @@ def command_train(tile: Tile, args: argparse.Namespace) -> None:
         x[i * DIM + i] = 1.0
         x[i * DIM + (i + 1) % DIM] = -0.25 if i % 2 else 0.25
     x = [bits(v) for v in x]
-    target_weights = [bits((i - (ELEMENTS // 2 - 1)) / (2 * DIM)) for i in range(ELEMENTS)]
+    target_weights = [
+        bits((i - (ELEMENTS // 2 - 1)) / (2 * DIM)) for i in range(ELEMENTS)
+    ]
     step = [0] * ELEMENTS
     for i in range(DIM):
         step[i * (DIM + 1)] = bits(-0.125)
@@ -313,8 +374,10 @@ def command_train(tile: Tile, args: argparse.Namespace) -> None:
         tile.run(dy, weights, transpose_b=True)
         weights = tile.run(step, dw, weights, accumulate=True)
         time.sleep(args.delay)
-    print(f"train: {tile.jobs} jobs bit-identical to the reference in "
-          f"{time.monotonic() - started:.1f} s; final loss {current:.6f}")
+    print(
+        f"train: {tile.jobs} jobs bit-identical to the reference in "
+        f"{time.monotonic() - started:.1f} s; final loss {current:.6f}"
+    )
 
 
 def command_bench(tile: Tile, args: argparse.Namespace) -> None:
@@ -334,15 +397,17 @@ def command_bench(tile: Tile, args: argparse.Namespace) -> None:
         replies = tile.link.transact(words)
         for job in range(jobs_per_scan):
             end = (job + 1) * per_job
-            if replies[end - ELEMENTS:end] != expected:
+            if replies[end - ELEMENTS : end] != expected:
                 raise RuntimeError(f"benchmark job {job} result is wrong")
         total += jobs_per_scan
     elapsed = time.monotonic() - started
     status = Status.decode(tile.link.transact([STATUS])[0])
-    flops = total * 2 * DIM ** 3
-    print(f"bench: {total} jobs in {elapsed:.3f} s through JTAG = {flops / elapsed / 1e6:.2f} "
-          f"MFLOPS end to end; one job = {status.cycles} clocks = "
-          f"{2 * DIM ** 3 / status.cycles * TILE_MHZ:.1f} MFLOPS on the chip at {TILE_MHZ} MHz")
+    flops = total * 2 * DIM**3
+    print(
+        f"bench: {total} jobs in {elapsed:.3f} s through JTAG = {flops / elapsed / 1e6:.2f} "
+        f"MFLOPS end to end; one job = {status.cycles} clocks = "
+        f"{2 * DIM**3 / status.cycles * TILE_MHZ:.1f} MFLOPS on the chip at {TILE_MHZ} MHz"
+    )
 
 
 def main() -> int:
@@ -353,12 +418,18 @@ def main() -> int:
     selftest.add_argument("--seed", type=int, default=1)
     train = commands.add_parser("train", help="train a dense layer on the tile")
     train.add_argument("--epochs", type=int, default=48)
-    train.add_argument("--delay", type=float, default=0.25, help="seconds between epochs")
+    train.add_argument(
+        "--delay", type=float, default=0.25, help="seconds between epochs"
+    )
     bench = commands.add_parser("bench", help="measure throughput")
     bench.add_argument("--scans", type=int, default=20)
     bench.add_argument("--seed", type=int, default=1)
     args = parser.parse_args()
-    handlers = {"selftest": command_selftest, "train": command_train, "bench": command_bench}
+    handlers = {
+        "selftest": command_selftest,
+        "train": command_train,
+        "bench": command_bench,
+    }
     link = Link()
     try:
         handlers[args.command](Tile(link), args)

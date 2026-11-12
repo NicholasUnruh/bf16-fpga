@@ -1,5 +1,7 @@
 # Design
 
+A PC drives the tile through the board's USB-Blaster: Quartus's JTAG tool carries 64-bit command words to a bridge on the FPGA, which runs them against the tile in its own clock domain.
+
 ```text
 PC: bf16_host.py ── socket ── quartus_stp ── USB-Blaster
                                                  │ JTAG, 24 MHz
@@ -27,7 +29,7 @@ Replies are `{B16A, sequence, data}`, and the host checks every tag. Word *n* ca
 
 ## TDI skew
 
-On hardware, TDI reaches the bridge 7 TCK after its TDO framing, so `pack_scan` advances each scan by `TDI_SKEW_BITS`. This was measured by sweeping all 64 offsets and holds at 6, 16 and 24 MHz, so it counts edges rather than time. Its cause inside Altera's encrypted hub is unknown, and `tb/top_tb.sv` does not model it. If a future build changes it, tag or result checks fail loudly; rerun the sweep.
+On hardware, TDI reaches the bridge 7 TCK after its TDO framing, so `pack_scan` advances each scan by `TDI_SKEW_BITS`. This was measured by sweeping all 64 offsets and holds at 6, 16 and 24 MHz, so it counts edges rather than time. Its cause inside Altera's encrypted hub is unknown, and `tb/top_tb.sv` does not model it. If a future build changes it, the tag and result checks fail loudly and the sweep must be rerun.
 
 ## Offline builds
 
